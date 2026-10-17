@@ -119,7 +119,7 @@ io.on('connection', (socket) => {
     }
 
     io.to(getOrderRoom(orderId)).emit(
-      'order.status.updated',
+     'order.updated',
       event,
     )
 
