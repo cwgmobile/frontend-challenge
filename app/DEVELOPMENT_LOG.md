@@ -3099,3 +3099,138 @@ versão atual do KURIO.
 
 **Observação:** a regressão visual automatizada cobre
 o cabeçalho. Não representa comparação de todas as telas.
+M17 — Publicação, incidentes, homologação final e entrega (16–17/10/2026)
+Atualização posterior aos registros M16: as pendências históricas acima retratam o momento em que foram escritas. Esta seção consolida as verificações posteriores informadas durante a conversa. Ela não apaga resultados ou limitações anteriores. O registro foi elaborado com base nos comandos, mensagens e resultados compartilhados pelo desenvolvedor, sem acesso direto ao computador Windows nem ao painel privado da Vercel.
+
+M17.01 — Testes automatizados e regressão visual
+Situação informada: concluída antes da publicação.
+- A suíte Playwright chegou a 34 execuções aprovadas, contemplando projetos desktop e mobile: 32 verificações funcionais e 2 de regressão visual (cabeçalho desktop e mobile).
+- As capturas de referência visual foram incorporadas ao repositório, conforme relato do processo.
+- Em etapas anteriores, seletores ambíguos como “Explorar NFTs” e “Explorar” exigiram correspondência exata e/ou escopo no elemento main. A correção foi no teste, para identificar precisamente o elemento esperado, sem mudar a regra funcional da aplicação.
+- Build de produção e Lighthouse haviam sido validados anteriormente: Performance 83, Acessibilidade 97, Boas práticas 96, SEO 83. Esses resultados são uma fotografia da execução local e não uma promessa de pontuação idêntica no ambiente publicado.
+Comandos de referência (PowerShell, dentro de app):
+npm.cmd run build
+npx.cmd playwright test
+npx.cmd playwright show-report
+Aprendizado: distinguir teste funcional de regressão visual, registrar o total de execuções por navegador e não confundir resultados de rodadas diferentes.
+M17.02 — GitHub: fork, repositório remoto e histórico
+Problema/necessidade: publicar a solução no repositório controlado pelo candidato, preservando o desafio original.
+Procedimento realizado: fork para cwgmobile/frontend-challenge, atualização do remoto origin, commits e push na branch main.
+Repositório público: https://github.com/cwgmobile/frontend-challenge
+Marcos registrados:
+Commit	Conteúdo
+0c7d00f	Inclusão da aplicação e arquivos do projeto no repositório do candidato.
+787f513	Inclusão de app/vercel.json com reescrita SPA para index.html.
+0fbf07d	Correção do nome do evento emitido pelo servidor Socket.IO.
+
+
+Evidência do último push: 787f513..0fbf07d  main -> main, com destino https://github.com/cwgmobile/frontend-challenge.git.
+Aprendizado: git commit registra alterações localmente; git push origin main envia para o remoto. Verificar git status --short antes do commit ajuda a evitar incluir arquivos não relacionados.
+M17.03 — Deploy Vercel: configuração e rotas SPA
+Problema: uma aplicação React com rotas client-side precisa responder corretamente a acessos diretos em URLs internas, não apenas à página inicial.
+Configuração informada:
+- Projeto Vercel vinculado ao repositório GitHub.
+- Root Directory: app.
+- Framework Preset: Vite.
+- Build Command: vite build.
+- Output Directory: dist.
+- Install Command: npm install.
+- Arquivo app/vercel.json:
+{
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}
+Endereço público: https://frontend-challenge-plum-two.vercel.app/
+Resultado: o desenvolvedor confirmou que os deploys no painel Vercel estavam com status Ready, inclusive após o push final. Ready comprova conclusão da implantação, mas não substitui os testes funcionais.
+M17.04 — Incidente: catálogo vazio após primeira publicação
+Sintoma: a interface carregava na Vercel, mas o catálogo de NFTs não aparecia.
+Causa identificada: o MSW era iniciado automaticamente no ambiente de desenvolvimento, porém em produção exigia a variável VITE_ENABLE_MOCKS=true. Sem essa configuração, as requisições /api/... não eram interceptadas pelos mocks no navegador.
+Correção realizada: configurar VITE_ENABLE_MOCKS=true nas variáveis de ambiente da Vercel para Production e executar novo deploy, sem reutilizar cache.
+Evidências relatadas no console:
+[MSW] Mocking enabled
+[KURIO] MSW iniciado com sucesso.
+[KURIO MSW] Requisição recebida: GET /api/nfts
+Foi relatada correspondência do handler e resposta 200 OK; o catálogo voltou a aparecer.
+Aprendizado: variáveis VITE_... são resolvidas no build do frontend; alterações no ambiente exigem nova compilação/deploy. O uso de MSW em produção é intencional e demonstrativo, não uma API real.
+M17.05 — Incidente: checkout retornando HTTP 405 em produção
+Sintoma: tentativa de registrar pedido na Vercel apresentou HTTP 405 para POST /api/orders, com resposta HTML da hospedagem em vez de JSON do mock.
+Diagnóstico: a chamada não estava sendo atendida pelo handler esperado do MSW naquele teste. Foram conferidos a inicialização do service worker e os handlers de pedidos.
+Resultado posterior: em nova validação, o checkout demonstrativo foi concluído, com a tela de confirmação e logs do MSW indicando interceptação de POST /api/orders e GET /api/orders/:orderId.
+Limite de evidência: o resultado final de sucesso está confirmado pelo relato; não há prova suficiente para atribuir o 405 a uma única causa definitiva além da ausência de interceptação naquela tentativa. Não registrar como correção de backend real.
+Observação: o pedido é simulado, com persistência local no navegador; não há cobrança, assinatura de transação ou blockchain.
+M17.06 — Dificuldade: pedidos antigos e repetição de formulários
+Sintoma: testar a tela de confirmação repetidamente exigia refazer os dados do checkout; tentativa de abrir uma confirmação antiga pelo histórico resultou em Not Found.
+Tratamento: em vez de exigir outra compra, o teste foi dividido em etapas independentes: primeiro o endpoint de saúde do servidor e depois um cliente Socket.IO executado pelo terminal.
+Aprendizado: rotas de confirmação podem depender de um identificador e de dados presentes no armazenamento do navegador; uma URL antiga, isoladamente, não prova falha do Socket.IO. Para testar infraestrutura, usar um cliente mínimo reduz trabalho repetitivo.
+M17.07 — Socket.IO: arquitetura, testes e correção de evento
+Arquivos examinados na conversa:
+- app/src/services/socket-service.ts.
+- app/src/pages/ConfirmationPage.tsx (trecho do useEffect).
+- app/server/socket-server.mjs.
+Funcionamento no frontend:
+- autoConnect: false evita conexão automática ao importar o serviço.
+- A página de confirmação chama socket.connect(), inscreve o pedido via order.subscribe, escuta order.updated, invalida a consulta TanStack Query correspondente e remove listeners/encerra a conexão na limpeza do efeito.
+- A URL é definida por VITE_SOCKET_URL, com fallback para http://localhost:3001.
+Problema encontrado — nomes divergentes:
+- Cliente escutava order.updated.
+- Servidor emitia order.status.updated.
+- Correção aplicada: servidor passou a emitir order.updated.
+- Alteração isolada: server/socket-server.mjs, commit 0fbf07d e push confirmado ao GitHub.
+Testes locais realizados:
+1. Inicialização: node server/socket-server.mjs.
+2. Log confirmado: servidor disponível em http://localhost:3001.
+3. Acesso a http://localhost:3001/health com retorno positivo relatado.
+4. Cliente de teste via terminal com socket.io-client, conectado ao servidor e inscrito em teste-kurio; desenvolvedor confirmou o funcionamento.
+Comando de teste sem checkout:
+node -e "const {io}=require('socket.io-client'); const s=io('http://localhost:3001'); s.on('connect',()=>{console.log('CONECTADO:',s.id);s.emit('order.subscribe','teste-kurio');setTimeout(()=>s.disconnect(),1000)});s.on('connect_error',e=>{console.error('ERRO:',e.message);process.exit(1)})"
+Limitações importantes, verificadas no código:
+- O servidor escuta a porta fixa 3001, não uma porta dinâmica definida pelo provedor.
+- A configuração CORS permite apenas http://localhost:5173 e http://127.0.0.1:5173, não o domínio público da Vercel.
+- A hospedagem Vercel do frontend não hospeda automaticamente o processo Node persistente de server/socket-server.mjs.
+- O evento order.demo.update é desativado se NODE_ENV === 'production'.
+- O servidor demonstrativo emite eventos, mas não altera por si só o pedido guardado no localStorage do navegador; a página apenas invalida/refaz a consulta.
+- Não foi demonstrada a atualização completa de status de ponta a ponta após a correção, nem uma conexão Socket.IO em produção. O teste confirmou saúde, conexão e inscrição locais.
+Conclusão técnica: Socket.IO implementado e comunicação local validada; serviço de tempo real não disponibilizado publicamente nesta entrega. Essa condição foi explicitada na mensagem enviada à empresa.
+M17.08 — Inspeção do console do navegador
+Observações relatadas:
+- Logs do MSW confirmaram inicialização e tratamento de requisições do catálogo e pedidos.
+- Também apareceram mensagens de extensão do Chrome (chrome-extension://...), que não constituem evidência de defeito da aplicação.
+- A ausência de logs Socket.IO na página inicial não era prova de falha, pois a conexão é iniciada pela tela de confirmação, não pela home.
+Aprendizado: identificar a origem das mensagens antes de atribuir erros ao frontend; separar console da aplicação, service worker, hospedagem e extensões.
+M17.09 — Homologação e encerramento
+Validações comunicadas pelo desenvolvedor:
+Área	Resultado
+GitHub	Push final para main confirmado (0fbf07d).
+Vercel	Deploys informados como Ready.
+Catálogo	Carregamento público validado após habilitar MSW.
+Carrinho	Fluxo público validado.
+Checkout	Pedido demonstrativo concluído na Vercel após incidente 405.
+Confirmação	Tela de confirmação exibida no teste público.
+Playwright	34 execuções aprovadas em desktop/mobile, conforme histórico informado.
+Lighthouse	83 / 97 / 96 / 83 no teste local de produção.
+Socket.IO	Saúde, conexão e inscrição local validadas; produção não hospedada.
+Comunicação de entrega	Mensagem com links enviada à Jungle Gaming, conforme confirmação do candidato.
+
+
+Links entregues:
+- Aplicação: https://frontend-challenge-plum-two.vercel.app/
+- Código: https://github.com/cwgmobile/frontend-challenge
+Status de encerramento: desafio enviado à Jungle Gaming; aguarda retorno da empresa. O envio é um fato informado pelo candidato e não significa aprovação pela equipe avaliadora.
+M17.10 — Lições aprendidas e decisões para projetos futuros
+1. Separar ambientes: desenvolvimento local, preview de produção e deploy público possuem diferenças reais de configuração.
+2. Documentar variáveis: VITE_ENABLE_MOCKS e VITE_SOCKET_URL têm impacto direto na experiência publicada.
+3. Usar observabilidade: mensagens do console, logs MSW, status HTTP, endpoint /health e terminal do Socket.IO ajudaram a isolar problemas.
+4. Testar sem repetir fluxos longos: quando possível, criar testes mínimos independentes para conexão, eventos e endpoints.
+5. Manter eventos consistentes: nomes publicados pelo servidor precisam coincidir exatamente com os listeners do cliente.
+6. Não confundir simulação com integração real: MSW, checkout e carteiras são demonstrativos; tempo real local não equivale a backend em produção.
+7. Evitar alterações arriscadas na véspera: priorizar estabilização, testes, documentação e entrega.
+8. Preservar evidências: comandos, commits, resultados Playwright, métricas Lighthouse e URLs permitem reproduzir e explicar as decisões técnicas.
+M17.11 — Pendências técnicas não bloqueantes para evolução futura
+- Hospedar o Socket.IO em serviço adequado a conexões persistentes; aceitar PORT do ambiente e configurar CORS para o domínio do frontend.
+- Configurar VITE_SOCKET_URL na Vercel e publicar novo build, caso haja backend de tempo real.
+- Criar um teste de ponta a ponta que dispare order.updated e comprove a reação da interface e, se necessário, a persistência do novo status.
+- Investigar vulnerabilidades apontadas pelo npm audit sem aplicar atualizações destrutivas automaticamente.
+- Avaliar otimizações de bundle, imagens, SEO e acessibilidade apontadas pelo Lighthouse.
+- Se o desafio evoluir para produto real, substituir MSW/localStorage por API, banco, autenticação e infraestrutura de pagamento/blockchain apropriados.
+Registro final: desenvolvimento encerrado para a entrega do desafio; documentação histórica preservada e complementada com os incidentes e resultados posteriores.
